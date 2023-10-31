@@ -1,12 +1,9 @@
 const { default: axios } = require("axios");
 const express = require("express");
-const {
-  readData,
-  writeData,
-  readCouponsData,
-  writeCouponsData,
-} = require("../database");
 const moment = require("moment");
+const databaseStore = require("../database");
+let addCartFilePath = [];
+let couponsFilePath = [];
 
 const router = express.Router();
 
@@ -29,16 +26,15 @@ function isDateEqualOrGreaterThanToday(dateString) {
 
 router.get("/products", async (req, res) => {
   try {
-    const { data } = await axios.get("https://fakestoreapi.com/products");
-    const database = readData();
-    tempData = data.map((ele) => {
+    const database = [...addCartFilePath];
+    tempData = databaseStore.map((ele) => {
       const isCheckCart = database.some((ele) => ele.id === ele.id);
       return {
         ...ele,
         isCart: isCheckCart,
       };
     });
-    res.status(200).send(data);
+    res.status(200).send(tempData);
   } catch (e) {
     res.status(500).send(e);
   }
@@ -49,31 +45,29 @@ router.post("/addCart", async (req, res) => {
   if (!id || !quantity || !price) {
     res.send("some attributes missing");
   }
-
   try {
-    const database = readData();
-    const isCheckCart = database.some((ele) => ele.id === id);
+    const isCheckCart = addCartFilePath.some((ele) => ele?.id === id);
     if (isCheckCart) {
-      let tempDatabase = [...database].map((ele) => {
+      const data = databaseStore.find((ele) => ele.id === id);
+      let tempDatabase = [...addCartFilePath].map((ele) => {
         if (ele.id === id) {
           return {
             ...ele,
             quantity: quantity,
-            price: parseFloat(price) * quantity,
+            price: parseFloat(data.price) * quantity,
           };
         }
         return ele;
       });
-      writeData(tempDatabase);
+      addCartFilePath = tempDatabase;
       res.status(200).send("success");
     } else {
-      database.push({
+      addCartFilePath.push({
         id: id,
         price: price,
         quantity: quantity,
         discount: 0,
       });
-      writeData(database);
       res.status(200).send("success");
     }
   } catch (e) {
@@ -83,22 +77,38 @@ router.post("/addCart", async (req, res) => {
 
 router.get("/fetchCartDetails", async (req, res) => {
   try {
-    const database = [...readData()];
-    const { data } = await axios.get("https://fakestoreapi.com/products");
-    const tempData = database.map((ele) => {
-      const foundProduct = data.find((product) => product.id === ele.id);
+    const tempData = [...addCartFilePath].map((ele) => {
+      const foundProduct = databaseStore.find(
+        (product) => product?.id === ele?.id
+      );
+      const coupan = [...couponsFilePath]?.find(
+        (product) => product?.id === ele?.id
+      );
       return {
         ...ele,
         title: foundProduct.title,
         image: foundProduct.image,
         category: foundProduct.category,
+        coupanId: coupan?.id ?? null,
       };
     });
-    const total = tempData.reduce((totals, item) => {
-      const total = totals + item.price + item.discount;
+
+    let tempDatas = [...tempData]?.map((ele) => ele.id);
+    const coupans = [...couponsFilePath]?.filter((ele) =>
+      tempDatas.includes(ele.id)
+    );
+
+    const total = tempData?.reduce((totals, item) => {
+      let discount = 0;
+      if (parseFloat(item?.discount) !== 0) {
+        discount = parseFloat(item?.discount) * item?.quantity;
+      }
+      const total = totals + parseFloat(item.price) - discount;
       return total;
     }, 0);
-    res.status(200).send({ data: tempData, total: total });
+    res
+      .status(200)
+      .send({ data: tempData, total: total.toFixed(2), coupan: coupans });
   } catch (e) {
     res.status(500).send(e);
   }
@@ -107,9 +117,8 @@ router.get("/fetchCartDetails", async (req, res) => {
 router.delete("/deleteCartDetails/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const database = [...readData()];
-    const temp = database.map((ele) => ele.id !== id);
-    writeData(temp);
+    const temp = [...addCartFilePath].filter((ele) => ele.id !== parseInt(id));
+    addCartFilePath = temp;
     res.status(200).send({ status: "Delete successfully" });
   } catch (e) {
     res.status(500).send(e);
@@ -118,7 +127,7 @@ router.delete("/deleteCartDetails/:id", async (req, res) => {
 
 router.get("/coupans", async (req, res) => {
   try {
-    const database = [...readCouponsData()];
+    const database = [...couponsFilePath];
     res.status(200).send({ data: database });
   } catch (e) {
     res.status(500).send(e);
@@ -126,42 +135,40 @@ router.get("/coupans", async (req, res) => {
 });
 
 router.post("/generatecoupans", async (req, res) => {
-  const { id, date, discountPercentage } = req.body;
-  if (!id || !date || !discountPercentage) {
-    res.send("something missing");
-  }
+  const { id, date, discount } = req.body;
   try {
-    const database = [...readCouponsData()];
-
-    database.push({
-      id: database.length + 1,
-      productId: id,
-      date: date,
-      coupan: generateRandomUppercaseString(8),
-      discountPercentage: discountPercentage,
-    });
-    writeCouponsData(database);
-    res.status(200).send({ status: "Generate Successfully" });
+    if (!!id && !!date && !!discount) {
+      couponsFilePath.push({
+        id: couponsFilePath.length + 1,
+        productId: parseInt(id),
+        date: date,
+        coupan: generateRandomUppercaseString(8),
+        discount: parseInt(discount),
+      });
+      res.status(200).send({ status: "Generate Successfully" });
+    } else {
+      res.status(404).send("something missing");
+    }
   } catch (e) {
     res.status(500).send(e);
   }
 });
 
 router.get("/validateCoupan/:id", async (req, res) => {
-  const {id} = req.params;
+  const { id } = req.params;
   try {
-      const database = [...readCouponsData()];
-      const databaseTemp = [...readData()];
-      const temp = database.find((ele) => ele.id === parseInt(id));
+    const database = [...couponsFilePath];
+    const databaseTemp = [...addCartFilePath];
+    const temp = database.find((ele) => ele.id === parseInt(id));
     if (isDateEqualOrGreaterThanToday(temp?.date)) {
-      databaseTemp.map((ele) => {
+      let tempCartData = databaseTemp.map((ele) => {
         if (ele.id === temp.productId) {
           return {
             ...ele,
-            discount:
-              parseFloat(ele.price) -
-              (parseFloat(ele.price) * parseFloat(temp.discountPercentage)) /
-                100,
+            discount: (
+              (parseFloat(ele.price) * parseFloat(temp.discount)) /
+              100
+            ).toFixed(2),
           };
         } else {
           return {
@@ -170,14 +177,14 @@ router.get("/validateCoupan/:id", async (req, res) => {
           };
         }
       });
+      addCartFilePath = tempCartData;
       res.status(200).send({ status: "Apply Successfully" });
     } else {
-      res.status(200).send({ status: "validate express" });
+      res.status(200).send({ status: "Coupan Expired" });
     }
   } catch (e) {
     res.status(500).send(e);
   }
 });
-
 
 module.exports = router;

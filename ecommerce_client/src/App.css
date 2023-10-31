@@ -36,3 +36,12 @@
     transform: rotate(360deg);
   }
 }
+
+.heading-text{
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;  
+  overflow: hidden;
+  height: 40px;
+  margin-block: 7px;
+}

@@ -1,15 +1,18 @@
-import logo from "./logo.svg";
+import axios from "axios";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import "./App.css";
-import { Routes, Route, BrowserRouter } from "react-router-dom";
-import { Shopper } from "./Shopper/shopper";
+import GenerateCoupan from "./Shopper/GenerateCoupan";
 import { Cart } from "./Shopper/cart";
+import { Shopper } from "./Shopper/shopper";
 
+axios.defaults.baseURL = process.env.REACT_APP_BASE_URL;
 function App() {
   return (
     <BrowserRouter>
       <Routes>  
         <Route path="/" element={<Shopper />} />
         <Route path="/cart" element={<Cart />} />
+        <Route path="/generate-coupan" element={<GenerateCoupan />} />
       </Routes>
     </BrowserRouter>
   );
